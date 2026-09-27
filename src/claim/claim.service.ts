@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { COVERAGE_TYPE_CODE } from "../common/coverage-type.map";
 import { OracleReading } from "../oracle/oracle-reading";
 import { OracleService } from "../oracle/oracle.service";
 import { PolicyService, StoredPolicy } from "../policy/policy.service";
@@ -66,15 +67,15 @@ export class ClaimService {
 
   private async fetchOracleData(policy: StoredPolicy): Promise<OracleReading> {
     switch (policy.coverageType) {
-      case 0:
+      case COVERAGE_TYPE_CODE.StablecoinDepeg:
         return this.oracleService.checkStablecoinDepeg();
-      case 1:
+      case COVERAGE_TYPE_CODE.MarketCrash:
         return this.oracleService.checkMarketCrash();
-      case 2:
+      case COVERAGE_TYPE_CODE.LiquidationShield:
         return this.oracleService.checkLiquidationShield();
-      case 3:
+      case COVERAGE_TYPE_CODE.SmartContractRisk:
         return this.oracleService.checkSmartContractRisk();
-      case 4: {
+      case COVERAGE_TYPE_CODE.FlightDelay: {
         const flightNumber = policy.triggerParams?.flightNumber;
         return this.oracleService.checkFlightDelay(typeof flightNumber === "string" ? flightNumber : "UNKNOWN");
       }
@@ -91,7 +92,7 @@ export class ClaimService {
 
     let triggered: boolean;
     switch (policy.coverageType) {
-      case 4: // FlightDelay: triggers when the delay exceeds the threshold
+      case COVERAGE_TYPE_CODE.FlightDelay: // triggers when the delay exceeds the threshold
         triggered = oracle.value > oracle.threshold;
         break;
       default: // StablecoinDepeg, MarketCrash, LiquidationShield, SmartContractRisk: trigger below threshold
@@ -126,6 +127,25 @@ export class ClaimService {
     }
 
     this.logger.log(`Settlement confirmed for policy ${policy.id}: tx=${settlement.txHash}`);
+
+    // ── Atomic post-settlement writes (issue #23) ──────────────────────────
+    // The on-chain payout above is now irreversible. The two writes below
+    // (deactivate the policy + insert the claim record) MUST succeed or fail
+    // together. With the current in-memory stores they are effectively atomic
+    // because both are synchronous mutations of in-process Maps.
+    //
+    // When these stores are replaced by Postgres-backed repositories, wrap
+    // both writes in a single database transaction using the withTransaction
+    // helper from DatabaseModule:
+    //
+    //   await this.db.withTransaction(async (trx) => {
+    //     await this.policyService.deactivate(policy.id, trx);
+    //     await this.claimRepository.insert({ ...settledResult }, trx);
+    //   });
+    //
+    // An idempotency key on claims(policy_id) (a unique partial index on
+    // policy_id WHERE payout > 0) prevents a crash-and-retry from inserting
+    // a second claim row for the same policy after an already-confirmed payout.
     this.policyService.deactivate(policy.id);
     this.processedCount++;
     this.payoutTotal += BigInt(result.payout);

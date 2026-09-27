@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { CoverageTypeName } from "./coverage-type";
+import {
+  CoverageTypeName,
+  COVERAGE_TYPE_RISK_MULTIPLIER,
+  COVERAGE_TYPE_TRIGGER_THRESHOLD,
+} from "../common/coverage-type.map";
 import { CreateQuoteDto } from "./dto/create-quote.dto";
 
 export interface QuoteResult {
@@ -24,21 +28,9 @@ export interface CoverageTypeInfo {
   riskMultiplier: number;
 }
 
-const RISK_MULTIPLIERS: Record<CoverageTypeName, number> = {
-  [CoverageTypeName.StablecoinDepeg]: 1.0,
-  [CoverageTypeName.MarketCrash]: 1.5,
-  [CoverageTypeName.LiquidationShield]: 2.0,
-  [CoverageTypeName.SmartContractRisk]: 3.0,
-  [CoverageTypeName.FlightDelay]: 0.8,
-};
+const RISK_MULTIPLIERS: Record<CoverageTypeName, number> = COVERAGE_TYPE_RISK_MULTIPLIER;
 
-const DEFAULT_THRESHOLDS: Record<CoverageTypeName, number> = {
-  [CoverageTypeName.StablecoinDepeg]: 500, // 5%
-  [CoverageTypeName.MarketCrash]: 3000, // 30%
-  [CoverageTypeName.LiquidationShield]: 100, // any liquidation
-  [CoverageTypeName.SmartContractRisk]: 100, // any exploit
-  [CoverageTypeName.FlightDelay]: 120, // 2 hours
-};
+const DEFAULT_THRESHOLDS: Record<CoverageTypeName, number> = COVERAGE_TYPE_TRIGGER_THRESHOLD;
 
 const BASE_RATE = 0.03; // 3% annual base premium
 
